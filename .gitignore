@@ -1,0 +1,17 @@
+.venv/
+.uv-cache/
+data/
+.env
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+node_modules/
+.npm-cache/
+dist/
+*.log
+*.tsbuildinfo
+*.v6-backup/
+*.v6-backup
+test-results/
+.reference/
+COMMIT_PLAN.md
