@@ -1,94 +1,32 @@
 # LocalVoiceAI
 
-A local conversational companion that **remembers who you are** and **stays in character across sessions**.
+Local chat assistant. It runs against llama.cpp on your machine, so nothing goes out to a cloud API.
 
-Most chatbots reset every time you open them. LocalVoiceAI is built around the opposite idea: a proactive assistant with durable long-term memory and a personality that is loaded, conditioned, and carried forward — not a disposable prompt.
+The point of this repo is not "yet another CLI wrapper around an LLM". I wanted something that:
 
-It runs fully offline against a local LLM (llama.cpp). Nothing leaves your machine.
+- actually remembers you between sessions
+- keeps a personality instead of sounding like a generic chatbot every time you open it
+- can bring stuff up on its own, instead of waiting for you to repeat context
 
----
+## How a turn works
 
-## What this is for
+1. Your message goes into working memory (the current chat, dies when you quit).
+2. Context is built from: persona + long-term memories + recent chat.
+3. The local model replies.
+4. A second LLM pass looks at the turn and decides if anything is worth saving.
 
-LocalVoiceAI is not a generic Q&A wrapper. It is a small mind:
+Memory extraction is its own call with its own prompt. The chat model is not also responsible for "trying to remember".
 
-- **Proactive conversation** — the assistant speaks from a living persona and from what it already knows about you, instead of waiting to be re-taught every turn.
-- **Long-term memory** — durable facts about you are extracted, scored, stored, and recalled automatically.
-- **Dynamic personality** — character is a first-class object (markdown persona + optional persona memories), not a one-shot system prompt that evaporates when the session ends.
+## Memory
 
-Talk to it today. Come back tomorrow. It should still know your name, your projects, your preferences, and how it relates to you.
+Two layers:
 
----
+- **Working memory** — this session only. Cleared on exit.
+- **Long-term memory** — SQLite. Survives restarts. Path is `src/data/localvoice.db` (configurable).
 
-## How a turn actually works
+The extractor only keeps durable stuff: name, preferences, job, projects, relationships, long-term goals. It skips hi, one-off tasks, small talk, questions.
 
-Every reply is assembled from three layers of mind, then the conversation is mined for anything worth keeping:
-
-```
-You speak
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│  Working memory                         │
-│  current session, forgotten on exit     │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│  Context builder                        │
-│  persona  +  long-term memories  +  chat│
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│  Local LLM                              │
-│  generates the reply in character       │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│  Memory extractor                       │
-│  pulls durable user facts from the turn │
-└─────────────────────────────────────────┘
-    │
-    ▼
-┌─────────────────────────────────────────┐
-│  Memory manager → SQLite                │
-│  keep / update / discard                │
-└─────────────────────────────────────────┘
-```
-
-The assistant does not “hope” it will remember. After each exchange it runs a dedicated extraction pass, then only commits memories that clear importance and confidence gates.
-
----
-
-## Long-term memory
-
-Memory is the core product, not a plugin.
-
-### Two timescales
-
-| Layer | Lifetime | Role |
-| --- | --- | --- |
-| **Working memory** | This session only | Recent turns. Cleared when you quit. |
-| **Long-term memory** | Survives restarts | Identity, preferences, relationships, projects, stable facts. |
-
-Working memory is the conversation. Long-term memory is who you are to the assistant.
-
-### What gets stored
-
-The extractor is conservative. It ignores greetings, one-off tasks, small talk, and questions. It looks for things that will still matter later:
-
-- identity
-- preferences
-- skills
-- projects
-- occupation and education
-- long-term goals
-- relationships
-- other stable personal facts
-
-Each candidate is a structured record:
+A candidate looks like this:
 
 ```json
 {
@@ -101,19 +39,14 @@ Each candidate is a structured record:
 }
 ```
 
-### What gets kept
+Not everything gets written:
 
-Not every candidate becomes a memory.
+- confidence below 0.65 → drop
+- importance below 0.50 → drop
 
-- **confidence &lt; 0.65** → discarded
-- **importance &lt; 0.50** → discarded
-- otherwise it is written to SQLite
+If the same `memory_type` + `category` + `key` already exists, it updates that row instead of inserting a duplicate. Value gets replaced, importance can go up, confidence bumps a bit.
 
-If a memory with the same identity (`memory_type` + `category` + `key`) already exists, it is updated in place: the value is refreshed, importance can only rise, and confidence ticks up. The assistant does not accumulate contradictory copies of the same fact.
-
-### How memory comes back
-
-On the next turn, known user memories are injected as system context:
+On the next turn those rows get stuffed into the prompt as:
 
 ```
 Known information about the user:
@@ -121,116 +54,64 @@ Known information about the user:
 - project.name: LocalVoiceAI
 ```
 
-The model is not asked to “try to remember.” The facts are sitting in the prompt. That is why it can bring things up unprompted — a project you mentioned last week, a name, a preference — without you repeating yourself.
+So the model is not guessing. The facts are just there, which is why it can mention something you said last week without you bringing it up.
 
-Memories live in `src/data/localvoice.db` (configurable). They survive process restarts. They are local.
+## Personality
 
----
-
-## Personality that actually persists
-
-Personality here is not a vibe in the temperature slider. It is loaded, versioned, and present in every context window.
-
-### Personas as character files
-
-Personas live in `configs/personas/` as markdown. Each file is the assistant’s identity, rules, behavior, and voice. The default persona is selected in `configs/config.yaml`:
+Personas are markdown files in `configs/personas/`. That's the identity, rules, and tone. Which one loads is set in `configs/config.yaml`:
 
 ```yaml
 persona:
   default: "default"
 ```
 
-Swap the file, and the same memory system talks as a different person. The memories stay; the character changes — or you keep the character and let the memories deepen it.
+Drop in another `.md` file if you want a different character. Memory stays; only the persona text changes.
 
-### How personality develops over time
+Over time the same persona starts answering differently because it has more user memories in context. The DB also has a `persona` memory type (vs `user`) for traits the assistant itself picks up. User facts are extracted today. Persona memories are in the schema, just not fully wired yet.
 
-A static prompt is a costume. LocalVoiceAI treats personality as something that **conditions on history**:
-
-1. **Base character** — the markdown persona is always in context. Tone, boundaries, and relationship to you do not drift back to a generic helpful assistant.
-2. **User-conditioned behavior** — long-term memories about you are fed in with the persona. The same character answers differently once it knows you are a night owl, that you hate being interrupted, or that you are building a specific project.
-3. **Persona-side memory** — the store already distinguishes `memory_type: "user"` from `memory_type: "persona"`. That is the hook for traits the assistant itself acquires: private opinions, running jokes, how it has decided to treat you. User facts are extracted today; persona memories are first-class in the schema and repository.
-
-The result is a companion that can grow a relationship instead of performing one from scratch each session.
-
-Write a new markdown file under `configs/personas/` to define a different character. Keep the memory pipeline; only the identity layer changes.
-
----
-
-## Architecture
+## Layout
 
 ```
 src/
-├── main.py                 CLI loop
-├── mind/                   the conversational mind
-│   ├── mind.py             orchestrates a turn
-│   ├── working_memory.py   session history
-│   ├── context_builder.py  persona + memories + chat
-│   ├── memory_extractor.py LLM pass that proposes facts
-│   ├── memory_manager.py   gates, upserts, recall
-│   └── candidate_parser.py JSON → MemoryCandidate
-├── models/                 Memory, Persona, Interaction, Context
-├── storage/                SQLite + memory repository
-├── llm/                    llama.cpp via LiteLLM
-├── core/                   config, persona loader, instructions
-└── instructions/
-    └── memory_extractor.md extraction policy
+  main.py                 CLI loop
+  mind/                   turn orchestration + memory
+  models/                 Memory, Persona, Context, etc
+  storage/                SQLite
+  llm/                    llama.cpp via LiteLLM
+  core/                   config + persona loader
+  instructions/           memory extractor prompt
+configs/
+  config.yaml
+  personas/
 ```
 
-`Mind` is the only object that talks to you. It does not call the model with a raw user string. It builds a context, gets a reply, then immediately tries to learn from the exchange.
+`Mind` is the thing that talks to you. It builds context, gets a reply, then tries to learn from the exchange. LLM backend is a `BaseLLM` so you can swap it; default is local OpenAI-compatible llama.cpp through LiteLLM.
 
-The LLM backend is swappable (`BaseLLM`). The default client talks to a local OpenAI-compatible server (llama.cpp) through LiteLLM.
+## Setup
 
----
-
-## Quick start
-
-You need Python 3.10+, a llama.cpp server, and a GGUF model.
-
-### 1. Install Python deps
+Needs Python 3.10+, a llama.cpp server, and a GGUF model.
 
 ```bash
 bash scripts/setup.sh
 pip install litellm pyyaml
-```
 
-### 2. Download a model
-
-```bash
-bash scripts/download_model.sh
-```
-
-This pulls a Qwen3-4B GGUF into `models/llm/`. Point `configs/config.yaml` at the file you actually want to serve.
-
-### 3. Start the local LLM
-
-```bash
-bash scripts/start_llm.sh
-```
-
-The server should listen on `http://127.0.0.1:8080`. Confirm it:
-
-```bash
+bash scripts/download_model.sh   # Qwen3-4B into models/llm/
+bash scripts/start_llm.sh        # http://127.0.0.1:8080
 bash scripts/check_server.sh
 ```
 
-### 4. Talk
-
-From the repo root, with `src` on the path:
+Then:
 
 ```bash
 cd src
 python main.py
 ```
 
-Type normally. Type `exit` or `quit` to stop.
+Type `exit` or `quit` to stop. Memories stay in the db after you leave.
 
-Memories written during the session remain in the database after you leave.
+Set `model.name` in `configs/config.yaml` to whatever llama.cpp is actually serving.
 
----
-
-## Configuration
-
-`configs/config.yaml` controls the local server, model, conversation window, default persona, and database path.
+## Config
 
 ```yaml
 server:
@@ -251,20 +132,8 @@ database:
   path: src/data/localvoice.db
 ```
 
-The model name should match what llama.cpp is serving. Keep `base_url` on localhost unless you know you want otherwise — this project is designed to stay on-device.
-
----
-
-## Design principles
-
-- **Remember on purpose.** Extraction is a separate LLM call with its own instructions, not a side effect of chatting.
-- **Forget the noise.** Importance and confidence filters exist so the store does not fill with “hi” and today’s weather.
-- **One fact, one identity.** Updates overwrite the same key instead of spawning duplicates.
-- **Character is data.** Personas are files. Memories are rows. The mind is the glue, not a hidden prompt stuffed in `main.py`.
-- **Local by default.** The database, the model, and the conversation never need a cloud API.
-
----
+Keep `base_url` on localhost unless you have a reason not to.
 
 ## Status
 
-End-to-end chat, user-memory extraction, persistence, and persona loading are in place. The interesting work from here is making personality development as automatic as user-memory retention: richer persona memories, better recall ranking, and a companion that gets more itself — and more yours — the longer you talk to it.
+Chat, user-memory extract/store/recall, and persona loading work end to end. Next up is treating persona development more like user memory: actually writing persona memories, and ranking what gets recalled instead of dumping everything into the prompt.
