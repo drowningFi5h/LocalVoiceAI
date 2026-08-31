@@ -18,6 +18,17 @@ class Speech:
     def whisper(self):
         from faster_whisper import WhisperModel
 
+        try:
+            return WhisperModel(
+                self.settings.whisper_model,
+                device=self.settings.whisper_device,
+                compute_type=self.settings.whisper_compute_type,
+                download_root=str(self.settings.data_dir / "models" / "whisper"),
+                local_files_only=True,
+            )
+        except (OSError, ValueError):
+            if self.settings.offline:
+                raise
         return WhisperModel(
             self.settings.whisper_model,
             device=self.settings.whisper_device,
@@ -29,11 +40,33 @@ class Speech:
     @cached_property
     def kokoro(self):
         import spacy
-        from kokoro import KPipeline
+        from kokoro import KModel, KPipeline
 
         if not spacy.util.is_package("en_core_web_sm"):
             raise RuntimeError("English speech assets are missing. Run uv sync --extra voice.")
-        return KPipeline(lang_code="a", repo_id="hexgrad/Kokoro-82M", device="cpu")
+        repo = "hexgrad/Kokoro-82M"
+        model = KModel(
+            repo_id=repo,
+            config=self.cached_asset(repo, "config.json"),
+            model=self.cached_asset(repo, "kokoro-v1_0.pth"),
+        )
+        pipeline = KPipeline(lang_code="a", repo_id=repo, model=model, device="cpu")
+        for voice in self.settings.kokoro_voice.split(","):
+            path = self.cached_asset(repo, f"voices/{voice}.pt")
+            pipeline.voices[voice] = pipeline.load_single_voice(path)
+        return pipeline
+
+    def cached_asset(self, repo, filename):
+        from huggingface_hub import hf_hub_download
+        from huggingface_hub.errors import LocalEntryNotFoundError
+
+        cache = str(self.settings.data_dir / "models" / "huggingface" / "hub")
+        try:
+            return hf_hub_download(repo, filename, cache_dir=cache, local_files_only=True)
+        except LocalEntryNotFoundError:
+            if self.settings.offline:
+                raise
+            return hf_hub_download(repo, filename, cache_dir=cache)
 
     def transcribe(self, audio):
         with self.stt_lock:
