@@ -1,0 +1,16 @@
+export type Mode = 'baseline' | 'graph';
+export type Provider = 'local' | 'cloud';
+export type Passage = { id: string; source_id: string; title: string; text: string; score?: number;
+  page?: number; section?: string; url?: string; version: number; number?: number };
+export type Source = { id: string; title: string; kind: string; url?: string; version: number;
+  status: string; progress: number; error?: string; chunks: number; passages?: {id: string; text: string; metadata: Passage}[] };
+export type Trace = { elapsed_ms?: number; first_audio_ms?: number; model?: string; usage?: Record<string, number> };
+export type Turn = { id: string; question: string; answer: string; played?: string; status: string;
+  mode: Mode; provider: Provider; citations: Passage[]; trace?: Trace };
+export type NodeEvent = {node: string; status: string; elapsed_ms?: number; reason?: string};
+export type Health = {local_model: string; local_backend?: 'ollama' | 'lmstudio'; cloud_model: string; cloud_backend?: 'openai' | 'gemini'; cloud_provider?: string; cloud_override?: boolean; cloud_connection_id?: string | null; cloud_available: boolean; voice_installed: boolean; offline: boolean};
+export type EvalRow = {id: string; category: string; question: string; expected_answer: string; expected_sources: string[];
+  mode: Mode; answer?: string; error?: string; citations: Passage[]; passages: Passage[]; recall_at_5?: number;
+  review?: {answer_correct: boolean; citations_supported: boolean}};
+export type EvalRun = {id: string; status: string; created: string; result: {rows: EvalRow[]; error?: string;
+  summary?: Record<Mode, Record<string, number | null>>}};
