@@ -28,6 +28,19 @@
 .connection-settings-row>span{font-size:11px;color:var(--muted)}
 .app-shell :is(.panel,.source-card,.about-card,.review-case,.upload-zone){background:var(--glass);border:1px solid var(--glass-edge);border-radius:26px;box-shadow:var(--glass-shadow);backdrop-filter:blur(16px)}
 .app-shell .panel{overflow:hidden}
+.app-shell .workspace-grid > *, .app-shell .inspector{min-width:0}
+.app-shell .inspector .panel-title{padding:18px 22px;gap:12px}
+.app-shell .inspector .panel-title > span:first-child{min-width:0;overflow-wrap:anywhere}
+.app-shell .inspector .panel-title :is(svg,.tiny-pill,.count){flex-shrink:0}
+.app-shell .inspector .workflow-intro{padding:18px 22px 0}
+.app-shell .inspector .node-list{padding:8px 22px 18px}
+.app-shell .inspector .graph-node > div{min-width:0;overflow-wrap:anywhere}
+.app-shell .inspector .graph-node small{flex-shrink:0;white-space:nowrap}
+.app-shell .inspector .workflow-footer{padding:16px 22px;border-bottom:0;line-height:1.6}
+.app-shell .inspector .empty-evidence{padding:26px 22px 30px;overflow-wrap:anywhere}
+.app-shell .inspector .passage-preview{padding:18px 22px;overflow-wrap:anywhere}
+.app-shell .inspector .passage-preview > div{min-width:0}
+.app-shell .inspector .passage-preview strong{min-width:0}
 .app-shell :is(.primary,.secondary){border-radius:99px;padding:12px 20px}
 .app-shell .secondary{background:var(--glass);border-color:var(--glass-edge);box-shadow:0 3px 12px #18261a09}
 .app-shell .secondary:hover:not(:disabled){background:#ffffffa6}
@@ -81,6 +94,13 @@
 .app-shell .site-header,.app-shell .studio-hero{border-radius:0;border:0;box-shadow:none}
 .app-shell main{border:0;border-radius:0;background:transparent;margin-top:0}
 .app-shell[data-provider=cloud] main{background:transparent}
+.app-shell .source-card{padding:24px;min-width:0}
+.app-shell .source-card h3 button{display:block;max-width:100%;overflow-wrap:anywhere;white-space:normal}
+.app-shell .source-card p{overflow-wrap:anywhere;line-height:1.8}
+.app-shell .source-actions{flex-wrap:wrap;gap:8px}
+.app-shell .source-actions button{min-height:36px;min-width:32px}
+.app-shell .source-modal.panel{overflow-y:auto;overscroll-behavior:contain;max-height:calc(100dvh - 48px);min-height:0}
+.app-shell .source-modal pre{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere}
 .app-shell .provider-context{display:flex;align-items:center;flex-wrap:wrap;gap:14px;padding:13px 18px;border-radius:20px;overflow:visible}
 .app-shell .provider-emblem{width:32px;height:32px}
 .app-shell .provider-route{margin-left:auto;align-items:flex-end;min-width:0}
@@ -135,16 +155,3 @@
 .app-shell[data-provider=cloud] .current-connection,.app-shell[data-provider=cloud] .settings-icon{background:#b889c422}
 @media(max-width:900px){.app-shell .provider-context{grid-template-columns:40px minmax(0,1fr) 32px;gap:12px}.app-shell .provider-context-copy p{font-size:22px}.app-shell .provider-route{grid-column:2;grid-row:2;align-items:flex-start;margin-left:0;max-width:100%}.app-shell .provider-help{grid-column:3;grid-row:1}.app-shell .cloud-destination{grid-column:2/-1;text-align:left}.app-shell .provider-emblem{width:40px;height:40px}}
 @media(max-width:480px){.app-shell .provider-context{padding:20px 16px;grid-template-columns:32px minmax(0,1fr) 28px;gap:10px}.app-shell .provider-emblem{width:32px;height:32px}.app-shell .provider-context-copy p{font-size:20px}.app-shell .provider-model{font-size:10px}}
-.app-shell .workspace-grid > *, .app-shell .inspector{min-width:0}
-.app-shell .inspector .panel-title{padding:18px 22px;gap:12px}
-.app-shell .inspector .panel-title > span:first-child{min-width:0;overflow-wrap:anywhere}
-.app-shell .inspector .panel-title :is(svg,.tiny-pill,.count){flex-shrink:0}
-.app-shell .inspector .workflow-intro{padding:18px 22px 0}
-.app-shell .inspector .node-list{padding:8px 22px 18px}
-.app-shell .inspector .graph-node > div{min-width:0;overflow-wrap:anywhere}
-.app-shell .inspector .graph-node small{flex-shrink:0;white-space:nowrap}
-.app-shell .inspector .workflow-footer{padding:16px 22px;border-bottom:0;line-height:1.6}
-.app-shell .inspector .empty-evidence{padding:26px 22px 30px;overflow-wrap:anywhere}
-.app-shell .inspector .passage-preview{padding:18px 22px;overflow-wrap:anywhere}
-.app-shell .inspector .passage-preview > div{min-width:0}
-.app-shell .inspector .passage-preview strong{min-width:0}
