@@ -40,7 +40,7 @@ export default function ProviderSettings({health, onClose, onSaved}: {
     <span className="section-label">YOUR CONNECTION</span>
     <h2 id="provider-title">Bring your own intelligence.</h2>
     <p className="settings-intro">Choose an engine. Keep the same voice, sources, and workspace.</p>
-    <div className="current-connection"><ShieldCheck size={17}/><span>{current?.cloud_available ? `${current.cloud_provider || "API"} · ${current.cloud_model}` : "No API configured"}<small>Server configuration</small></span></div>
+    <div className="current-connection" aria-live="polite"><ShieldCheck size={17}/><span>{providers.find(p=>p.id===provider)?.name} · {model.trim() || 'Choose a model'}<small>{editing ? 'Editing connection' : 'Connection preview'}</small></span></div>
     <div className="saved-connections">{connections.map(c=><div className="saved-connection" key={c.id}><span><strong>{c.name}</strong><small>{c.model}</small></span><button type="button" disabled={pending || current?.cloud_connection_id===c.id} onClick={()=>void manage(c.id)}>{current?.cloud_connection_id===c.id ? 'Active' : 'Use'}</button><button type="button" disabled={pending} onClick={()=>{setEditing(c.id);setName(c.name);setProvider(c.provider);setModel(c.model);setKey('');}}>Edit</button><button type="button" disabled={pending} aria-label={`Remove ${c.name}`} onClick={()=>void manage(c.id,true)}><X size={14}/></button></div>)}</div>
     <form onSubmit={e => {e.preventDefault(); void save();}}>
       <fieldset disabled={pending}>
