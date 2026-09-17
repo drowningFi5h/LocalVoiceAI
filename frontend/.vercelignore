@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+.env.*
+.vercel
+*.log
+.npm-cache
+*.tsbuildinfo

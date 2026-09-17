@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowDown, ArrowRight, AudioLines, BookOpen, Check, ChevronRight, CircleHelp, Database,
   ExternalLink, FileText, FlaskConical, GitBranch, Globe, Headphones, Library, LoaderCircle, MessageSquare,
   Mic, MicOff, Plus, RefreshCw, Send, Square, Trash2, Upload, X } from 'lucide-react';
-import { api, post } from './api';
+import { api, post, hosted, workspaceReady, configureWorkspace, workspaceSocket, sessionKey } from './api';
+import WorkspaceConnection from './WorkspaceConnection';
 import { AudioEngine, emptyPlayback } from './audio';
 import VoiceWorkspace from './VoiceWorkspace';
 import { ProviderSwitch, ProviderContext } from './ProviderSwitch';
@@ -16,6 +17,8 @@ const starters = ['How does the Aurora field station get its power?', 'Compare t
 const fmt = (n: number | null | undefined, percent = false) => n == null ? '—' : percent ? `${Math.round(n * 100)}%` : `${(n / 1000).toFixed(1)}s`;
 
 export default function App() {
+  const [workspaceSettings, setWorkspaceSettings] = useState(false);
+  const [workspaceRevision, setWorkspaceRevision] = useState(0);
   const [providerSettings, setProviderSettings] = useState(false);
   const [page, setPage] = useState('workspace');
   const [sources, setSources] = useState<Source[]>([]);
@@ -58,7 +61,7 @@ export default function App() {
 
   function send(event: Record<string, unknown>) { if (ws.current?.readyState === WebSocket.OPEN) ws.current.send(JSON.stringify(event)); }
   function chooseProvider(next: Provider) {
-    if (busy || voice !== 'off' || audio.current.playing.size || (next === 'cloud' && !health?.cloud_available)) return;
+    if (busy || voice !== 'off' || audio.current.playing.size) return;
     setProvider(next); setError(''); setNotice('');
   }
   function interrupt() {
@@ -74,16 +77,19 @@ export default function App() {
   }
   async function connect(newSession = false) {
     const attempt = ++connectionAttempt.current;
+    setConnected(false);
     ws.current?.close(); audio.current.stopPlayback(); audio.current.stopCapture();
     voiceReady.current = false; setVoice('off'); activeTurn.current = null; setBusy(false);
-    let id = newSession ? null : localStorage.getItem('lva-session');
+    let id = newSession ? null : localStorage.getItem(sessionKey());
     let history: Turn[] = [];
     if (id) { try { history = await api<Turn[]>(`/sessions/${id}`); } catch { id = null; } }
+    if (!mounted.current || attempt !== connectionAttempt.current || !workspaceReady()) return;
     if (!id) id = (await api<{id: string}>('/sessions', post())).id;
     if (!mounted.current || attempt !== connectionAttempt.current) return;
-    localStorage.setItem('lva-session', id); setSession(id); setPlayback(emptyPlayback()); setTurns(history); setNodes([]); setPassages([]);
-    const socket = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/ws/${id}`);
+    localStorage.setItem(sessionKey(), id); setSession(id); setPlayback(emptyPlayback()); setTurns(history); setNodes([]); setPassages([]);
+    const socket = workspaceSocket(id);
     ws.current = socket;
+    socket.onerror = () => { if (ws.current === socket) setError('Streaming connection failed. Check local network permission, the pairing token, and that the backend is running. You can also open the local app.'); };
     socket.onclose = () => { if (ws.current === socket) { setConnected(false); setBusy(false); audio.current.stopPlayback(); audio.current.stopCapture(); voiceReady.current = false; setVoice('off'); } };
     socket.onmessage = event => {
       if (ws.current !== socket) return;
@@ -127,20 +133,22 @@ export default function App() {
 
   useEffect(() => {
     mounted.current = true;
+    if (!workspaceReady()) return;
     audio.current.onPlayback = snapshot => {if (mounted.current && snapshot.turnId === activeTurn.current) setPlayback(snapshot);};
-    void refresh().then(() => connect()).catch(e => setError(e.message));
+    let disposed = false;
+    void refresh().then(() => {if (!disposed) return connect();}).catch(e => {if (!disposed) setError(e.message);});
     void api<{ready: boolean}>('/models/status').then(s => setModelReady(s.ready)).catch(() => {});
     const timer = setInterval(() => { void refresh().catch(() => {}); }, 3000);
     const modelTimer = setInterval(() => { void api<{ready: boolean}>('/models/status').then(s => setModelReady(s.ready)).catch(() => {}); }, 15000);
-    return () => { mounted.current = false; audio.current.onPlayback = undefined; clearInterval(timer); clearInterval(modelTimer); ws.current?.close(); audio.current.close(); };
-  }, []);
+    return () => { disposed = true; ++connectionAttempt.current; mounted.current = false; audio.current.onPlayback = undefined; clearInterval(timer); clearInterval(modelTimer); ws.current?.close(); audio.current.close(); };
+  }, [workspaceRevision]);
   useEffect(() => { send({type: 'configure', mode, provider}); }, [mode, provider]);
   useEffect(() => { if (busy) end.current?.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'nearest'}); }, [turns.length, busy]);
 
   const matchQuery = draft.trim() || turns.at(-1)?.question || '';
   useEffect(() => {
     const controller = new AbortController();
-    if(matchQuery.length < 3) {setMatches([]);return;}
+    if(!workspaceReady() || matchQuery.length < 3) {setMatches([]);return;}
     setMatches([]);
     const timer=setTimeout(()=>{ void api<{id:string;title:string;match:string}[]>(`/suggestions?q=${encodeURIComponent(matchQuery)}`,{signal:controller.signal}).then(setMatches).catch(()=>{}); },300);
     return ()=>{clearTimeout(timer);controller.abort();};
@@ -148,12 +156,14 @@ export default function App() {
 
   async function ask(text = draft) {
     if (!text.trim() || !connected) return;
+    if (provider === 'cloud' && !health?.cloud_available) {setProviderSettings(true);return;}
     setError(''); setNotice(''); setDraft('');
     audio.current.stopPlayback(); await audio.current.prepare();
     send({type: 'text', text: text.trim(), mode, provider});
   }
   async function toggleVoice() {
     if (voice !== 'off') { voiceReady.current = false; audio.current.stopCapture(); interrupt(); send({type: 'voice_stop'}); setVoice('off'); return; }
+    if (provider === 'cloud' && !health?.cloud_available) {setProviderSettings(true);return;}
     setError(''); setVoice('loading');
     try {
       await audio.current.capture((pcm, level, detected) => {
@@ -174,6 +184,18 @@ export default function App() {
   }
   async function action(fn: () => Promise<unknown>) { try { setError(''); await fn(); await refresh(); } catch (e) { setError(String(e)); } }
   async function openSource(id: string) { try { setSourceDetail(await api<Source>(`/sources/${id}`)); } catch(e) { setError(String(e)); } }
+  function changeWorkspace(address: string, token: string) {
+    ++connectionAttempt.current;
+    ws.current?.close(); ws.current = undefined;
+    audio.current.stopPlayback(); audio.current.stopCapture();
+    activeTurn.current = null; voiceReady.current = false;
+    configureWorkspace(address, token);
+    setConnected(false); setBusy(false); setVoice('off'); setPlayback(emptyPlayback());
+    setSources([]);setTurns([]);setPassages([]);setNodes([]);setRuns([]);setHealth(undefined);
+    setModelReady(null);setSession('');setDraft('');setMatches([]);setSelected(undefined);setSourceDetail(undefined);
+    setProviderSettings(false);setProvider('local');setError('');setNotice('');setWorkspaceSettings(false);
+    setWorkspaceRevision(v=>v+1);
+  }
   const readyCount = sources.filter(s => s.version > 0).length;
   const PageHeading = page === 'workspace' ? 'h2' : 'h1';
   const run = runs.find(r => r.id === activeRun) || runs[0];
@@ -188,8 +210,8 @@ export default function App() {
     {page === 'workspace' && <StudioHero provider={provider} voice={voice} connected={connected} energy={energy} onVoice={() => void toggleVoice()} onEnter={() => {studio.current?.scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth'}); studio.current?.focus({preventScroll:true});}}/>}
 
     <main id="studio" ref={studio} tabIndex={-1}>
-      <ProviderContext provider={provider} health={health} ready={modelReady}/><div className="connection-settings-row"><button className="secondary" disabled={busy || voice !== 'off' || playback.speaking} onClick={() => setProviderSettings(true)}>API settings <ExternalLink size={14}/></button></div>
-      <header className="topbar"><div className="breadcrumb">THE WORKSPACE <ChevronRight size={14}/><strong>{page === 'workspace' ? 'Conversation' : page === 'library' ? 'Knowledge library' : page === 'evaluation' ? 'Evaluation lab' : 'Setup & architecture'}</strong></div><div className="connection"><span className={`dot ${connected ? 'green' : ''}`}/>{connected ? 'Backend connected' : 'Disconnected'}{!connected && <button onClick={() => void connect().catch(e => setError(e.message))}>Reconnect</button>}</div></header>
+      <ProviderContext provider={provider} health={health} ready={modelReady}/><div className="connection-settings-row"><button className="secondary" disabled={busy || voice !== 'off' || playback.speaking} onClick={() => provider === 'local' ? setWorkspaceSettings(true) : workspaceReady() ? setProviderSettings(true) : setWorkspaceSettings(true)}>{provider === 'local' ? connected ? 'Local workspace connected' : 'Connect local workspace' : 'API settings'} {provider === 'local' && connected ? <span className="workspace-connected-mark" aria-label="Connected"><Check size={14} aria-hidden="true"/></span> : <ExternalLink size={14}/>}</button>{hosted && workspaceReady() && <button className="secondary" onClick={()=>changeWorkspace('', '')}>Disconnect workspace</button>}</div>
+      <header className="topbar"><div className="breadcrumb">THE WORKSPACE <ChevronRight size={14}/><strong>{page === 'workspace' ? 'Conversation' : page === 'library' ? 'Knowledge library' : page === 'evaluation' ? 'Evaluation lab' : 'Setup & architecture'}</strong></div><div className="connection"><span className={`dot ${connected ? 'green' : ''}`}/>{connected ? 'Backend connected' : 'Disconnected'}{!connected && <button onClick={() => hosted ? setWorkspaceSettings(true) : void connect().catch(e => setError(e.message))}>Reconnect</button>}</div></header>
       {error && <div className="banner error" role="alert"><span>{error}</span><button aria-label="Dismiss error" onClick={() => setError('')}><X size={17}/></button></div>}
       {notice && <div className="banner" role="status"><span>{notice}</span><button aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={17}/></button></div>}
       <div className="page-heading"><div><div className="eyebrow">{page === 'workspace' ? '01 / CONVERSATION' : page === 'library' ? '02 / SOURCES' : page === 'evaluation' ? '03 / EVALUATIONS' : '04 / SETUP'}</div><PageHeading>{page === 'workspace' ? 'Your conversation.' : page === 'library' ? 'Knowledge library.' : page === 'evaluation' ? 'Evaluate your answers.' : 'Setup & architecture.'}</PageHeading><p>{page === 'workspace' ? 'Chat naturally, explore ideas, or ask about your documents.' : page === 'library' ? 'Turn documents and public web pages into a searchable knowledge base.' : page === 'evaluation' ? 'Compare retrieval paths on the same questions, sources, and model.' : 'Local storage, transparent workflows, and a voice you can interrupt.'}</p></div>{page === 'workspace' && <MotionButton className="secondary" onClick={() => void connect(true).catch(e => setError(e.message))}><Plus size={16}/> New conversation</MotionButton>}</div>
@@ -227,6 +249,7 @@ export default function App() {
     </main>
     <input hidden type="file" accept=".pdf,.md,.txt" ref={fileInput} onChange={e => {if(e.target.files?.[0]) void upload(e.target.files[0]); e.target.value='';}}/>
     <input hidden type="file" accept=".pdf,.md,.txt" ref={replaceInput} onChange={e => {if(e.target.files?.[0]) void upload(e.target.files[0],true); e.target.value='';}}/>
+    {workspaceSettings && <WorkspaceConnection onClose={()=>setWorkspaceSettings(false)} onConnect={changeWorkspace}/>}
     {providerSettings && <ProviderSettings health={health} onClose={() => setProviderSettings(false)} onSaved={status => {setHealth(status);setNotice('API connection updated. Select API in the header to use it.');}}/>}
     {(selected || sourceDetail) && <div className="modal-backdrop" onClick={() => {setSelected(undefined);setSourceDetail(undefined);}}><section className="source-modal panel" role="dialog" aria-modal="true" aria-label="Source evidence" onClick={e => e.stopPropagation()}><button className="modal-close" aria-label="Close source" onClick={() => {setSelected(undefined);setSourceDetail(undefined);}}><X size={21}/></button><div className="eyebrow">SOURCE EVIDENCE</div><h2>{selected?.title || sourceDetail?.title}</h2>{selected ? <><p className="muted">Version {selected.version}{selected.page ? ` · Page ${selected.page}` : ` · ${selected.section || 'Text passage'}`}</p><pre>{selected.text}</pre>{selected.url && <a href={selected.url} target="_blank" rel="noreferrer">Open original page <ExternalLink size={14}/></a>}<p className="mono muted">Passage {selected.id}</p></> : sourceDetail?.passages?.map(p => <div className="full-passage" key={p.id}><small>{p.metadata.page ? `PAGE ${p.metadata.page}` : p.metadata.section || 'PASSAGE'}</small><pre>{p.text}</pre></div>)}<button className="secondary" onClick={() => {setSelected(undefined);setSourceDetail(undefined);}}>Done <Check size={15}/></button></section></div>}
   </div>;

@@ -190,3 +190,31 @@ The composer suggests up to three similar source names or related topics for
 typed questions and completed voice transcripts. Matching uses local fuzzy title
 matching and indexed-text keywords, not a confidence score or a claim of evidence.
 Selecting a suggestion adds the chosen source to your draft; it never auto-sends.
+
+## Hosted frontend connection
+
+Production frontend: **[localvoiceai-pi.vercel.app](https://localvoiceai-pi.vercel.app)**. Install the local backend using [SETUP.md](SETUP.md) before connecting.
+
+Vercel serves the React UI. Your browser connects directly to the FastAPI server on your computer; that server handles documents, retrieval, speech and LM Studio. Vercel does not run the Python backend or proxy local requests. Every visitor needs their own running local backend.
+
+1. Import the repository into Vercel. Set **Root Directory** to `frontend`, framework to Vite, build command to `npm run build`, and output directory to `dist`. No provider keys belong in Vercel environment variables.
+2. Complete the local installation in [SETUP.md](SETUP.md), including speech/model downloads if needed. Keep LM Studio at its loopback address.
+3. In your local repository folder, authorize the exact production URL (use your own origin if deploying a fork):
+
+   ```powershell
+   .venv/Scripts/python.exe scripts/pair_workspace.py --origin https://localvoiceai-pi.vercel.app
+   powershell -File scripts/start.ps1 -Hosted
+   ```
+
+   If the backend is already running, stop and restart it after pairing. The command prints a random token and saves it in the ignored local data directory. Running it again replaces the previous pairing. Preview deployments have different origins and are not automatically authorized.
+4. On the hosted site, click **Connect local workspace**, use `http://127.0.0.1:8017`, and paste the token. Allow local network access if the browser prompts. The backend status turns connected after the streaming WebSocket is ready.
+
+Pairing grants the selected site access to your local documents, conversations and settings. Use a deployment you control. The token stays in tab memory, is never placed in a URL, and clears on reload or disconnect. Sessions remain on your computer. API mode still sends prompts and retrieved context to your selected provider.
+
+To revoke access, run `.venv/Scripts/python.exe scripts/pair_workspace.py --revoke` and restart the backend. Keep port 8017 bound to `127.0.0.1`; no router forwarding, public tunnel or public LM Studio port is needed.
+
+### Browser compatibility
+
+HTTPS pages connecting to loopback HTTP/WebSockets are subject to browser mixed-content and local-network permissions. Support varies by browser and version; a successful HTTP probe does not guarantee WebSocket access. If permission is denied, reset the site's local network permission and reconnect. If streaming remains blocked, use **Open local app** at `http://127.0.0.1:8017` (build the local frontend first). Do not disable browser security globally.
+
+The hosted page needs internet access to load. For offline use, open the locally served app. The Vercel production origin and actual browser permission flow must be checked after deployment; automated tests cover the transport and authorization contract, not every browser policy.

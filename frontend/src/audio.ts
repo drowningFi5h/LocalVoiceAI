@@ -93,5 +93,5 @@ export class AudioEngine {
     this.node = undefined; this.stream = undefined;
   }
 
-  close() { this.stopPlayback(); this.stopCapture(); void this.context?.close(); }
+  close() { this.stopPlayback(); this.stopCapture(); void this.context?.close(); this.context = undefined; }
 }

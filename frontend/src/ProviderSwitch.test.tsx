@@ -9,11 +9,11 @@ describe('provider selection', () => {
     expect(markup).toContain('aria-checked="true"');
     expect(markup).toContain('disabled=""');
   });
-  it('keeps local selectable state and explains unavailable credentials', () => {
+  it('allows API setup before credentials exist', () => {
     const markup = renderToStaticMarkup(<ProviderSwitch provider="local" available={false} locked={false} onChange={() => {}}/>);
     expect(markup).toContain('aria-checked="false"');
-    expect(markup).toContain('disabled=""');
-    expect(markup).toContain('API credentials are not configured');
+    expect(markup).not.toContain('disabled=""');
+    expect(markup).toContain('Switch to API to configure credentials');
   });
   it('discloses the actual cloud destination without claiming local generation', () => {
     const markup = renderToStaticMarkup(<ProviderContext provider="cloud" ready health={{local_model:'local',cloud_model:'gemini-flash-latest',cloud_backend:'gemini',cloud_available:true,voice_installed:true,offline:false}}/>);

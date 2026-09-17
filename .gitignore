@@ -17,3 +17,7 @@ test-results/
 COMMIT_PLAN.md
 
 /src/data/
+
+.vercel/
+
+/docs/

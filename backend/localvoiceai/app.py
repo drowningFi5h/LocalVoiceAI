@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx
@@ -22,6 +23,7 @@ from .evaluation import ROOT, Evaluations, summarize
 from .graph import Pipeline
 from .ingestion import Ingestion
 from .models import Models
+from .pairing import Pairing
 from .providers import PROVIDERS, ProviderInput, provider_name
 from .speech import Speech
 from .transport import Conversation
@@ -44,6 +46,9 @@ class ReviewInput(BaseModel):
 
 def create_app(settings=None):
     settings = settings or Settings()
+    pairing = Pairing(settings.data_dir)
+    trusted_origins = [o for o in settings.origins if urlsplit(o).hostname in {"localhost", "127.0.0.1"}]
+    allowed_origins = trusted_origins + ([pairing.origin] if pairing.origin else [])
     cloud_defaults = {
         key: getattr(settings, key)
         for key in ("cloud_backend", "cloud_model", "cloud_api_key", "cloud_base_url")
@@ -92,28 +97,30 @@ def create_app(settings=None):
         db.close()
 
     app = FastAPI(title="LocalVoiceAI", version="0.1.0", lifespan=lifespan)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.origins,
-        allow_methods=["GET", "POST", "DELETE"],
-        allow_headers=["Content-Type"],
-    )
-
     @app.middleware("http")
     async def local_origin(request: Request, call_next):
         from fastapi.responses import JSONResponse
 
         origin = request.headers.get("origin")
-        if origin and origin not in settings.origins:
+        if origin and origin not in allowed_origins:
             return JSONResponse({"detail": "Origin is not allowed."}, status_code=403)
         if request.url.hostname not in {"localhost", "127.0.0.1", "testserver"}:
             return JSONResponse({"detail": "Localhost service only."}, status_code=403)
+        if origin and origin not in trusted_origins and request.method != "OPTIONS":
+            token = request.headers.get("authorization", "").removeprefix("Bearer ")
+            if not pairing.authorized(origin, token):
+                return JSONResponse({"detail": "Pairing token rejected. Reconnect your local workspace."}, status_code=401)
         return await call_next(request)
+
+    app.add_middleware(CORSMiddleware, allow_origins=allowed_origins,
+                       allow_methods=["GET", "POST", "DELETE"],
+                       allow_headers=["Content-Type", "Authorization"])
 
     @app.get("/api/health")
     async def health():
         return {
             "status": "ok",
+            "workspace_protocol": 1,
             "local_model": settings.local_model,
             "local_backend": settings.local_backend,
             "cloud_model": settings.cloud_model,
@@ -370,10 +377,16 @@ def create_app(settings=None):
     @app.websocket("/api/ws/{session_id}")
     async def websocket(ws: WebSocket, session_id: str):
         s = app.state.s
-        if ws.headers.get("origin") not in settings.origins or ws.url.hostname not in {
+        if ws.headers.get("origin") not in allowed_origins or ws.url.hostname not in {
             "localhost",
             "127.0.0.1",
         }:
+            await ws.close(code=1008)
+            return
+        origin = ws.headers.get("origin")
+        protocols = ws.headers.get("sec-websocket-protocol", "").split(",")
+        token = next((p.strip()[9:] for p in protocols if p.strip().startswith("lva-pair.")), "")
+        if origin not in trusted_origins and not pairing.authorized(origin, token):
             await ws.close(code=1008)
             return
         if session_id in s.connections or not s.db.one("SELECT id FROM sessions WHERE id=?", (session_id,)):

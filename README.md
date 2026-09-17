@@ -1,5 +1,7 @@
 # LocalVoiceAI
 
+[Open the hosted studio](https://localvoiceai-pi.vercel.app) · [Setup guide](SETUP.md) · [Connect your local backend](SETUP.md#hosted-frontend-connection)
+
 An AI voice assistant for working with your documents while keeping local processing under your control.
 
 In Local mode, document storage, search, speech recognition, and answer generation run on your machine. Ask questions aloud, hear the answers, and inspect the passages behind them.
@@ -29,6 +31,20 @@ React · TypeScript · FastAPI · LangChain · LangGraph · Qdrant · SQLite
 
 BGE and BM25 for retrieval. Silero VAD, faster-whisper, and Kokoro for speech.
 
+## Where it runs
+
+The website is the frontend. The local Python backend handles documents, RAG, LangGraph, transcription, TTS, and connections to LM Studio or Ollama.
+
+**Using the hosted website still requires the backend on your own computer. Installing LM Studio alone is not enough.** The browser connects directly to that backend; Vercel serves only the interface. Once the page loads, it checks backend connectivity and model readiness separately.
+
+```text
+Browser frontend → LocalVoiceAI backend (:8017) → LM Studio (:1234) or Ollama (:11434)
+```
+
+Start with the **[local installation and model setup guide](SETUP.md)**, then follow the **[hosted frontend connection guide](SETUP.md#hosted-frontend-connection)** to pair the website with your computer. Keep the backend and model server running. A green checkmark confirms the workspace connection; model readiness is shown separately.
+
+Vercel's [free Hobby plan](https://vercel.com/docs/plans/hobby) can serve this personal portfolio frontend. The backend runs locally, with no cloud hosting bill. Documents and speech stay on your computer; API mode sends generation context to the selected provider. For offline use, open the locally served interface instead.
+
 ## Run locally
 
 Requires Python 3.11–3.12, Node.js 22.12+, uv, and a local model server. The PowerShell example below uses Ollama; [SETUP.md](SETUP.md#lm-studio-local-endpoint) covers LM Studio.
@@ -47,6 +63,21 @@ cd ..
 
 Keep Ollama running and open [localhost:8017](http://127.0.0.1:8017). Preserve your existing `.env` if you've already configured the app. Import the Aurora demo corpus to try retrieval without using personal documents.
 
+## Models and downloads
+
+Use the official sources below. The warm-up command in the setup guide fetches retrieval and speech assets into the appropriate local caches; generation models are installed separately through LM Studio or Ollama.
+
+| Purpose | Model / download |
+|---|---|
+| Generation with Ollama | [Qwen3 4B](https://ollama.com/library/qwen3:4b) — `ollama pull qwen3:4b` |
+| Generation with LM Studio | [Qwen3-VL-4B-Instruct GGUF](https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF) — load a supported quantization and set the model ID returned by your server |
+| Document embeddings | [BGE small English v1.5](https://huggingface.co/BAAI/bge-small-en-v1.5) |
+| Speech recognition | [faster-whisper base.en](https://huggingface.co/Systran/faster-whisper-base.en) |
+| Speech synthesis | [Kokoro 82M](https://huggingface.co/hexgrad/Kokoro-82M), with the `af_heart` voice |
+| Speech detection | [Silero VAD](https://github.com/snakers4/silero-vad), installed with the speech dependencies |
+
+Download instructions, cache locations, and offline verification are in **[Configuration and model downloads](SETUP.md#configuration-and-model-downloads)**. The generation model does not provide TTS; Kokoro speaks its answers. Model weights are not included in this repository or uploaded to Vercel.
+
 ## Development
 
 ```powershell
@@ -63,4 +94,4 @@ Component attribution and license details are in [THIRD_PARTY_NOTICES.md](fronte
 
 ## Earlier CLI version
 
-The original CLI and memory implementation remains in `src/` and `configs/`. Its [setup notes](docs/LEGACY_CLI.md) describe that separate application. The browser workspace uses `backend/` and `frontend/`.
+The original CLI and memory implementation remains in `src/` and `configs/`. It is separate from the browser application. The browser workspace uses `backend/` and `frontend/`.
