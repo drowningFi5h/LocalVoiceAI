@@ -92,6 +92,6 @@ See [SETUP.md](SETUP.md) for configuration and [VALIDATION.md](VALIDATION.md) fo
 
 Component attribution and license details are in [THIRD_PARTY_NOTICES.md](frontend/THIRD_PARTY_NOTICES.md).
 
-## Earlier CLI version
+## License
 
-The original CLI and memory implementation remains in `src/` and `configs/`. It is separate from the browser application. The browser workspace uses `backend/` and `frontend/`.
+Project code is available under the [MIT License](LICENSE). Third-party components and model weights remain subject to their respective licenses; see [THIRD_PARTY_NOTICES.md](frontend/THIRD_PARTY_NOTICES.md) and the linked model pages.
