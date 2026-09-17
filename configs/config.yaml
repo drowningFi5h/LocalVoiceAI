@@ -1,0 +1,29 @@
+server:
+  provider: "llama.cpp"
+  base_url: "http://127.0.0.1:8080/v1"
+
+model:
+  name: "Qwen3-4B-Hivemind"
+  temperature: 0.7
+  max_tokens: 512
+  top_p: 0.9
+
+conversation:
+  max_history: 20
+
+persona:
+  default: "default"
+
+logging:
+  level: "INFO"
+
+database:
+  path: src/data/localvoice.db
+
+server:
+  provider: openai
+  base_url: http://127.0.0.1:8080/v1
+  api_key: local
+
+model:
+  name: /teamspace/studios/this_studio/workspace/models/llm/Qwen3-4B-Hivemind-Inst-Hrtic-Ablit-Uncensored-Q5_K_M-imat.gguf

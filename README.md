@@ -60,3 +60,7 @@ npm run build
 See [SETUP.md](SETUP.md) for configuration and [VALIDATION.md](VALIDATION.md) for tested behavior and outstanding checks. Benchmark references need human review; model answers and citations can be wrong. Speech is English-only, scanned PDFs need OCR, and live voice latency depends on your hardware.
 
 Component attribution and license details are in [THIRD_PARTY_NOTICES.md](frontend/THIRD_PARTY_NOTICES.md).
+
+## Earlier CLI version
+
+The original CLI and memory implementation remains in `src/` and `configs/`. Its [setup notes](docs/LEGACY_CLI.md) describe that separate application. The browser workspace uses `backend/` and `frontend/`.
